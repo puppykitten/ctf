@@ -4,9 +4,7 @@ The challenge binary itself is a pretty straightforward wrapper for playing with
 
 The vulnerability in the Update function was pretty straightforward to see:
 
-
-
-
+```
 __int64 __fastcall Update(heap_mgt_array_t *heap_addr)
 {
   __int64 result; // rax
@@ -39,6 +37,8 @@ __int64 __fastcall Update(heap_mgt_array_t *heap_addr)
   }
   return result;
 }
+```
+
 
 So, of course, we can write 1 byte past a chunk. What does that allow us to target? Of course
 the LSB of the size field of the next chunk, if we get sizes right and we don't get aligned up by +8 bytes.
