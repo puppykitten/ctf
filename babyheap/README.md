@@ -66,7 +66,7 @@ From here, the steps are pretty text-book, as we have created the condition that
 
 3 free the overlapped chunks onto the fastbin, so that we can leak out the fastbin fd pointers to get a heap address leak and a libc address leak
 
-4 overwrite the bk pointer of the remainder chunk sitting in the unsorted bin with the address of `_IO_list_all`. The attack we will execute from here is basically Angelboy's technique described [here](http://4ngelboy.blogspot.hu/2016/10/hitcon-ctf-qual-2016-house-of-orange.html).
+4 overwrite the bk pointer of the remainder chunk sitting in the unsorted bin with the address of `_IO_list_all`. The attack we will execute from here is basically Angelboy's technique described [here](http://4ngelboy.blogspot.hu/2016/10/hitcon-ctf-qual-2016-house-of-orange.html), otherwise known as [house of orange](https://github.com/shellphish/how2heap/blob/master/house_of_orange.c), plus the additional trick using `_IO_wstr_finish`.
 
 5 trigger an allocation to a size that is smaller than the overwritten
 
