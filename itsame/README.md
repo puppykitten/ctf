@@ -58,9 +58,9 @@ And the way Pizzas are cooked, including the check after assembling ingredients:
                                                 // 
                                                 // loop to create c_str rep of concatenated ingredients
     {
-      v20 = std::vector_ingredients::back(&l_ingredients_vector);
+      v20 = std::vector_ingredients_back(&l_ingredients_vector);
       v3 = (pizza_t **)&v20;
-      if ( !(unsigned __int8)std::vector_ingredients::unk(&i, &v20) )
+      if ( !(unsigned __int8)std::vector_ingredients_eq(&i, &v20) )
         break;
       v4 = sub_35B0(&i);
       std::__cxx11::basic_string<char,std::char_traits<char>,std::allocator<char>>::basic_string(
@@ -175,6 +175,31 @@ Second is easier. Once we have the heap leak, we can know the exact address of a
 To get the rce with all that, we can target the invocation of pizza admiring:
 
 ```
+
+__int64 __fastcall handle_AdmireCookedPizzas(user_t *logged_in_user)
+{
+  __int64 v1; // rax
+  __int64 i; // [rsp+10h] [rbp-1930h]
+  __int64 v4; // [rsp+20h] [rbp-1920h]
+  void (__fastcall ***pizza_this)(_QWORD, char *); // [rsp+28h] [rbp-1918h]
+  char s[6400]; // [rsp+30h] [rbp-1910h]
+  unsigned __int64 v7; // [rsp+1938h] [rbp-8h]
+
+  v7 = __readfsqword(0x28u);
+  if ( std::vector_pizza::size(&logged_in_user->pizza_vector) == 0 )
+    printf("You have nothing to admire, %s\n", &unicode_banner_sg);
+  v1 = std::vector_pizza::size(&logged_in_user->pizza_vector);
+  printf("Admire these beauties... (%lu)\n", v1);
+  for ( i = std::vector_pizza_begin(&logged_in_user->pizza_vector); ; std::vector_pizza_it(&i) )
+  {
+    v4 = std::vector_pizza_back((__int64)&logged_in_user->pizza_vector);// terminator condition
+    if ( !(unsigned __int8)std::vector_pizza_eq(&i, &v4) )
+      break;
+    pizza_this = *(void (__fastcall ****)(_QWORD, char *))std::vector_pizza_at((__int64)&i);
+    memset(s, 0, 0x1900uLL);
+    (**pizza_this)(pizza_this, s);
+  }
+  return __readfsqword(0x28u) ^ v7;
 
 ```
 
