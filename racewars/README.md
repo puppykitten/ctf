@@ -317,6 +317,12 @@ Another primitive that could have been useful is that the arena object had a fie
 We can see that the transmission-tire overlap gives us a very powerful corruption primitive.
 But we still need something to target. We decided to go after arenas, in order to control the data_start where we allocate from, therefore giving us a way to overlap the GOT.
 
+We also need libc + heap leak. Heap leak is straightforward from the primitive since game objects have many heap pointers like data_start, data_end, etc. Libc leak would come trivially once we overlap the GOT.
+
+Since the main arena is always allocated at the very beginning, this couldn't be our target. Instead, we played with filling up arena so that we would trigger new arenas sequentially after where we created the overlapped and corrupted tire/transmission.
+
+The last challenge we had because of the target we picked (arena corruption -> GOT overwrite). Since there is the buggy behavior of allowing zero sized allocations, regardless of managing to wrap an arena->data_start onto the GOT, we would only succeed at allocating non-0 sized allocations from here even when the main arena is full, because 0 sized allocations succeed in a full arena anyway. Therefore, we had to also trigger moving the main_arena->list_head, so that we would not attempt (and erroneously succed at) allocating a zero sized tire from the main arena.
+
 # exploit steps
 
 The full exploit is in rw.py. It has detailed comments for the steps, briefly:
@@ -329,12 +335,12 @@ The full exploit is in rw.py. It has detailed comments for the steps, briefly:
 * now corrupt the second arena with the r/w primitive. since we kept our transmission, we can still use it irectly.
 * first we read out the arena's data_ptr which gives us a heap leak
 * then we modify the next pointer of the second arena to create a fake arena
-* and we modify the iterator count of the second arena so that its next can be chosen as the new list_head, making fake arena the list head
+* and we modify the iterator count of the second arena so that its next can be chosen as the new list_head, making fake arena the list head when yet another new arena creation is triggered
 * then we construct the fake arena, after the second arena's control structures (this corrupts some allocted old parts but who cares)
-* the fake arena will have a next of 0, a data start pointing to the GOT and data_end pointing there too, so that it looks full
+* the fake arena will have a next of 0, a data start pointing to the GOT and data_end pointing there too, so that it looks full. It has to look full so that the creation of the third arena is triggered and has to have a zero next so that iteration stops here.
 * write the max allocation size field of the fake arena for sanity (0xfff)
 * now we buy some more chassis so we trigger the creation of the third arena. This not only creates a third arena but also makes the fake_arena the list_head
-* now that we made fake arena the list_head, we can again corrupt its data_end so that now it looks like it has space for allocations
+* now that we made fake arena the list_head, we can again corrupt its data_end so that now it looks like it has space for allocations, this way NOW when we trigger an allocation: main arena is skipped since it is no longer the list_head, because fake arena is the list head, so we can go to the fake arena and allocate from there, therefore we allocate from the GOT.
 * finally - we can allocate once again overlapping 0 sized tire + a transmission, this time they go to the GOT
 * same steps to get r/w primitive via the modified transmission gear count and overwrite the free pointer in the GOT to get rce.
 
