@@ -302,6 +302,8 @@ So if we set (2**32 >> 5) as the size, then we get a 0 sized allocation. Note th
 
 The second vulnerability (or feature) was that the transmission allows modifying any transmission gear as long as the gear index is smaller than the gear_count. However the gear array is sized 4 always and the gear count is not verified to be <= 4, so if we corrupt the gear count, we get a primitive to read/write any byte starting from the transmission->gear up to 0xFFFF.
 
+Except... that actually the transmission->gear_cnt was not a short but a qword and the index requested into it was a qword as well. This means that here we already had the opportunity for a complete arbitrary rw instead of a write up to offset 0xFFFF. Consequently.. the writeup as follows is a slight bit over-engineered :) The spoiler would be, of course, that once you overlapped the tire and the transmission and modified the 64 bits of the transmission->gear_cnt, then you have the fully powerful primitive to read/write anything-anywhre. Not so hard from there, is it. o.O
+
 # exploit primitives
 
 This challenge was not PIE and not RELRO. Therefore it was immediately clear that we will want to target a GOT overwrite. (It actually could have been done without it also, see the final notes.) And first it looked like we could do a classic free->system overwrite as the frees are called on the end on some objects where we can nicely control the contents. But, the order wasn't right and this failed on calling system() with junk first. So we resorted to trying one-gadget rce, which worked anyway.
