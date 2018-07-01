@@ -32,7 +32,7 @@ __int64 __fastcall main(__int64 a1, char **a2, char **a3)
 
 The service implements basic commands, helpfully shown by the help command:
 
-```
+```c
   if ( !memcmp(input_line, "help", 4uLL) )
   {
     puts("Available commands:");
@@ -69,7 +69,7 @@ c01db33f@sftp.google.ctf's password:
 
 So we have to guess a password? Looking at the auth() function, it is pretty straightforward: it will XOR a magic short with the password as a bytestream and then allow us in if we end up with the right magic result:
 
-```
+```c
 __printf_chk(1, "%s@%s's password: ", username_codebeef, sftp_server_name);
   if ( !(unsigned int)__isoc99_scanf("%15s", pwd) )
     return 0LL;
@@ -127,7 +127,7 @@ As we start reversing the code, it becomes quickly apparent that there are a ton
 
 More importantly, among the functions we find... malloc, free, and realloc. All right, let's see them!
 
-```
+```c
 signed __int64 malloc()
 {
   return rand() & 0x1FFFFFFF | 0x40000000LL;
@@ -146,7 +146,7 @@ __int64 __fastcall realloc(__int64 a1)
 
 What? That's ... simple. Also, more than this custom "allocator" being so simple, it makes something else clear: why all the inlining happened. It should be no surprise that we won't find calls to realloc and free, since the compiler likely removed invocations of NOP functions. And even the malloc implementation being this simple, it would probably just get inlined. Indeed, this is what we find quickly in several places, e.g. here's a snippet from the function `find_entry`:
 
-```
+```c
 MALLOC_NEW_ENTRY:
   child_ = (entry_t *)(rand() & 0x1FFFFFFF | 0x40000000LL);// *child = malloc(sizeof(entry))
   *child_arr = child_;
@@ -183,7 +183,7 @@ More reversing is needed and we have to look for something before main. You woul
 .text:000000000000109A                         start           endp
 ```
 
-```
+```c
 void __fastcall init(unsigned int a1, __int64 a2, __int64 a3)
 {
   __int64 v3; // r13
@@ -212,7 +212,7 @@ void __fastcall init(unsigned int a1, __int64 a2, __int64 a3)
 
 Well, look at that ("init_heap" and "init_filesystem" named by me). The first function is nothing interesting, but in `init_heap` we found what we were looking for:
 
-```
+```c
 void init_heap()
 {
   unsigned int seed; // eax
@@ -264,7 +264,7 @@ sftp> $
 
 Oh yes, the default created filesystem contained not only a false flag file, but also a src directory with the ACTUAL source code of the challenge! Here it is, for completeness:
 
-```
+```c
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -1023,7 +1023,7 @@ This is the one issue I had with this challenge's design. I appreciated the idea
 
 All right, we have covered everything, finally here is the working exploit code with plenty of comments to boot.
 
-```
+```python
 #!/usr/bin/env python
 from pwn import *
 import time, struct
@@ -1362,7 +1362,7 @@ Unfortunately due to the inlining (for free/realloc, even code elimination) of t
 
 So I simply compiled the source without including "secure_allocator.h" to implement a fake allocator but by adding a few lines of code to the main that will replicate the exact same steps that were taken in the `init_filesystem` originally:
 
-```
+```c
 
 directory_entry root_bss;
 directory_entry* root = NULL;
@@ -1404,7 +1404,7 @@ For this exploit, I use the newest libc version available on Ubuntu 18.04. This 
 
 First, we could target an exact-fit. This is the easiest to achieve: if we free the directory entry, it will go onto the corresponding size tcache bin. Next, if we would request a data of this size, then we would be able to reclaim the freed chunk. However, a problem arises: when doing a `put` for a new size, we MUST send all the bytes, we can not send less:
 
-```
+```c
   for ( ; new_file_size_; new_file_size_ -= v6 )
   {
     v6 = fread(new_file_addr, 1uLL, new_file_size_, stdin);
@@ -1440,7 +1440,7 @@ From here, it is pretty trivial to win. Here's one possibility:
 
 Here is an exploit that will achieve the arbitrary r/w and leak the entire heap. Concluding it is left as an exercise for the reader :)
 
-```
+```python
 #!/usr/bin/env python
 from pwn import *
 import time, struct
@@ -1700,7 +1700,7 @@ Honestly, I have no idea why the challenge author did this, but if it was on pur
 
 ps: can you spot where the off-by-one is?
 
-```
+```c
 void entry_path(entry* ptr, char* path) {
 
   char* path_ptr = &path[path_max - 1];
