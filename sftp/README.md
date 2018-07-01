@@ -108,7 +108,7 @@ These two characters are also ASCII, so we won't have any problem to send them t
 0x8dfa = 10001101 11111010
           $H$H$H$ H$H$H$H
            H$I%H% I%I%I$I
-           ```
+```
 
 The MSB character is a bit special, because we used only a 14 character long input and the MSB bit of the initial hash value `0x5417` is 1 and it still has effect, so the MSB character of the password will be `$` instead of the expected `%`. Thus the following password bypasses the check: `$H$I%H%I%I%I$I`
 
