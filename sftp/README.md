@@ -52,7 +52,7 @@ The service implements basic commands, helpfully shown by the help command:
   }
 ```
 
-The binary doesn't contain any obfuscation, nothing particularly interesting about the reversing process... except for a couple things. But before we get there, we have to get past the authentication.
+The binary doesn't contain any obfuscation, it is a regular dynamically linked ELF with the usual mitigations... except for full RELRO! This being a CTF, we can assume that a GOT overwrite will be our way to go eventually. But before we get there, we have to get past the authentication.
 
 ## Password Based Authentication
 
@@ -94,7 +94,7 @@ __printf_chk(1, "%s@%s's password: ", username_codebeef, sftp_server_name);
 
 Seeing this, I could have done one of two things: either figure this out, or just patch out the authentication step (as it has no side-effect at all for the rest of the program) and start dealing with the exploitation part while I wait for somebody smarter in the team to figure this out for me. Surprisingly enough, in this case I managed to choose the more efficient option and indeed I was given a helping hand by the incomparable @koczkatamas. Here's how he solved this:
 
-First we can see that the initial `hash` value does not really matter if we supply a long enough password as `hash` will shifted out and only our password characters (which are xored with the hash) will be used.So if we select a character pair (`$` and `H`) which nullify each other, eg. if password use '$', 'H' characters alternately (`$H$H$H$H$H$H$H`) then the resulting `hash` value will be 0.
+First we can see that the initial `hash` value does not really matter if we supply a long enough password as `hash` will get shifted out and only our password characters (which are xored with the hash) will be used. So if we select a character pair (`$` and `H`) which nullify each other, eg. if password uses the '$' and 'H' characters alternately (`$H$H$H$H$H$H$H`) then the resulting `hash` value will be 0.
 
 ```
 '$' = 00100100
@@ -102,7 +102,7 @@ First we can see that the initial `hash` value does not really matter if we supp
 ('$' << 1) | 'H' = 0
 ```
 
-These two characters are also ASCII, so we won't have any problem to send them to the program.Now our job is to create 36346 (0x8dfa) via bitflipping our base $H pattern:
+These two characters are also ASCII, so we won't have any problem to send them to the program. Now our job is to create 36346 (0x8dfa) via bitflipping our base `$H` pattern:
 
 ```
 0x8dfa = 10001101 11111010
@@ -159,7 +159,7 @@ I'm not exactly sure what linking steps the challenge author had to take in orde
 
 But wait, nevermind it being simple - this is just completely wrong, right?! After all if the realloc is a NOP, then naturally it would result in overflows whereever it is actually used. What's worse, the malloc returning a random address is obviously insecure, since nothing apart from chance seems to be standing in the way of creating overlapping allocations.
 
-But nevermind that - this obviously can not even "just work" like this, can it?! How would `rand() & 0x1FFFFFFF | 0x40000000LL` be returning valid (mapped) memory addresses? Clearly, we are missing something here. There has to be some custom code BEFORE the main() is executed.
+But nevermind that - this obviously can not even "just work" like this, can it?! How would `rand() & 0x1FFFFFFF | 0x40000000LL` be returning valid (mapped) memory addresses? Clearly, we are missing something here. There has to be some custom code BEFORE `main()` is executed.
 
 More reversing is needed and we have to look for something before main. You would immediately assume that something was put into the `init_array` and of course if we look at the start function, we find this is the case indeed:
 
@@ -224,7 +224,7 @@ void init_heap()
 }
 ```
 
-Ok, so we map that entire range within which we pick random addresses for each allocation, without any regard to the requested allocation size. This gives us an idea for what we want to do: achieve overlapping allocations of ... some objects ... where we can control the content of one and gaining control of the other we can turn into RCE. For a program implementing an in-memory filesystem it sounds reasonable that we could get objects of both kinds after all.
+Ok, so we map that entire range within which we pick random addresses for each allocation, without any regard to the requested allocation size. This gives us an idea for what we want to do: achieve overlapping allocations of ... some objects ... where we can control the content of one and gaining control of the other we can turn into RCE. For a program implementing a filesystem it sounds reasonable that we could get objects of both kinds after all.
 
 Of course, we would first have to reverse engineer the implementation details enough to understand the type of objects that are in play. So without further ado off I went, reversing the binary in IDA. And that... took me to the first pitfall where I wasted many hours pointlessly.
 
@@ -970,6 +970,7 @@ In fact, I did check this... but after seeing that the flag file was simply a re
  * the three types of filesystem objects (file, directory, link) all extend this base entry type with type-specific fields; for the link it is a link pointer, for files it is a length field and a data pointer; for directories it is an inline array of children pointers, which is 16 long by default and is extended by `realloc()` as necessary.
  * no limitation on number of operations we can make, number of files/directories/links we can have, etc.
  * the `put` command writes the new content into the existing data object IF the new size is not larger than the old size, otherwise it simply throws the old one away and allocates a new data object
+ * file data can be anything up to 0xFFFF bytes; when we `put` a file, we must send as many bytes as we indicated as length, can not send less
 
 
 ## A Simple Plan For A Simple Filesystem
@@ -1000,7 +1001,7 @@ When I first considered the chances of an overlap, unfortunately, with one quick
 
 So I proceeded from here to spend a lot of time looking for ways to achieve an overlap without any need for bruteforcing it. Eventually, of course, I did realize how likely this actually is. Of course this happened when I ran out of other ideas, tried a bruteforce in an endless loop just in case... and then to my surprise found how very very quickly I got lucky every time. So let's go through why that is.
 
-We can state the problem as: how many of each type of allocations do we need to make in order to make sure that with a probability over 50% we will get at least one file object allocation end up sharing the same 16 pages of memory with a data allocation. And in fact the birthday problem tells us that in this case, being left with 29-16 bits, we can about half the remainder, meaning that with 100-200 tries we should be almost certain to get a hit. Since the binary has no alarm or limitation on number of the filesystem operations we can make or limitation on the number of filesystem items we can create, this should be easy enough. In fact, these odds are so good, that I decided to optimize a different way and only used allocations of page size (0x1000) instead of (almost) 16 page sizes (0xFFFF). This is useful both for following alignment easier, but more so because this way we send a lot less data across the network each time. Since we have the squareroot property of the birthday problem working for us, we get better performance out of this, all things considered.
+We can state the problem as: how many of each type of allocations do we need to make in order to make sure that with a probability over 50% we will get at least one file object allocation end up sharing the same 16 pages of memory with a data allocation. And in fact the birthday problem tells us that in this case, being left with 29-16 bits, we can about half the remainder, meaning that with 100-200 tries we should be almost certain to get a hit. Since the binary has no alarm or limitation on number of the filesystem operations we can make or limitation on the number of filesystem items we can create, this should be easy enough. In fact, these odds are so good, that I decided to optimize a different way and only used allocations of page size (0x1000) instead of the theoretical maximum (0xFFFF). This is useful both for following alignment easier, but more so because this way we send a lot less data across the network each time. Since we have the squareroot property of the birthday problem working for us, we get better performance out of this, all things considered.
 
 (A sidenote for completeness: we are actually running into the generalized version of the birthday problem as described [here](https://en.wikipedia.org/wiki/Birthday_problem#Generalization_to_multiple_types). Technically, the reduction isn't the same, e.g. while the magic number is 23 for the normal birthday problem, it is 34 for the two-group generic variant. Nonetheless, what matters is that we more-or-less get a squareroot reduction on the size still. In the end, with page size allocations, we could expect close to 100% success rate with less than 500 allocation attempts.)
 
@@ -1344,8 +1345,8 @@ Normally, this writeup would be over now. However, as I've mentioned previously,
 Therefore, after the CTF, I wrote an exploit for this second bug, which is a use-after-free. To understand the bug, let's recap some things we can conclude about the filesystem implementation's behavior:
 
  * we are not able to change the root, but we can of course change the pwd using the `cd` command
- * when commands are given relative paths, finding entries always goes from the pwd pointer, not the root.
- * removing objects only deletes (`free()`s) the entry object, not the data object (so that's a memory leak on a "normal" heap)
+ * when commands are given relative paths, finding entries always goes from the pwd pointer, not the root
+ * removing objects only deletes (with `free()) the entry object, not the data object (so that's a memory leak on a "normal" heap)
  * removing a directory sets its parent's corresponding child entry to NULL and also walks every single link to set the link target to NULL in case it points to this directory
 
 Something is missing here!! When removing a directory, it should be detected when it is the current working directory that we are removing! Otherwise, the global pwd pointer will point to a freed object aka a classic UAF. Since removing pwd only NULLifies the corresponding child entry of the root, as long as further commands are using relative paths, everything will still "just work". This is because even freeing the directory entry with ptmalloc, only the first 16 bytes of the chunk get possibly modified, and even that only means the parent pointer, the type, and the first four bytes of the name, however none of those fields are used when entries are looked up starting from the `pwd`, since it that case the lookup only walks `pwd->children`.
