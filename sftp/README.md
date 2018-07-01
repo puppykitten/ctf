@@ -1741,7 +1741,7 @@ entry** new_entry(char* path) {
   strcpy((*child)->name, name); //4096 into 20 does not go
 ```
 
-Of course, with ptmalloc, we can get a heap overflow of significance. For example if we aligned a new file entry object to get the slot in front of an already existing one or a directory entry, then we could be corrupting pointers. But nevermind that, we know that we from a flexible heap overflow like this, we can also get an exploit out of tcache metadata corruption itself to begin with. So that would be fairly run of the mill.
+Of course, with ptmalloc, we can get a heap overflow of significance. For example if we aligned a new file entry object to get the slot in front of an already existing one or a directory entry, then we could be corrupting pointers. But nevermind that, we know that from a flexible heap overflow like this, we can also get an exploit out of tcache metadata corruption itself to begin with. So that would be fairly run of the mill.
 
 Unfortunately - as far as I could see - this bug doesn't speed things up for the CTF version. That is because 1) heap overflows into other chunks aren't useful without overlaps on this sophisticated allocator of course 2) unfortunately the remaining fields of a file/directory/link entry are initialized AFTER the `strcpy` call, which means that we lose whatever we "gain" by writing into a file's size field or data pointer field or a link's target field or a directory's child array fields.
 
@@ -1756,9 +1756,9 @@ struct link_entry {
 };
 ```
 
-This means that if we can fill up the name fully, then we can actually get the value of a link pointer leaked out! As discussed before, this wouldn't help speeding up collisions, but it would make it possible to get the exact state of the `rand()` and therefore precisely predict which allocation falls to which address. From there we could have then written an exploit that never fails.
+This means that if we can fill up the name fully, then we can actually get the value of a link pointer leaked out! (Or at least until the first null byte in it.) As discussed before, this wouldn't help speeding up collisions, but it would make it possible to get the exact state of the `rand()` and therefore precisely predict which allocation falls to which address. From there we could have then written an exploit that never fails.
 
-Here's an example run showing that we get something useful for a link name overwrite, but not for file overwrites. Notice how the leaked byte for the name is just the size of the data provided but for the link it is an actual address:
+Here's an example run showing that we get something useful for a link name overwrite, but not for file overwrites. Notice how the leaked byte for the name is just the size of the data provided but for the link it is (part of an) actual address:
 
 ```
 kutyacica@ubuntu:~/Desktop/GCTF18$ python expl.py 
