@@ -92,7 +92,7 @@ __printf_chk(1, "%s@%s's password: ", username_codebeef, sftp_server_name);
   return result;
 ```
 
-Seeing this, I could have done one of two things: either figure this out, or just patch out the authentication step (as it has no side-effect at all for the rest of the program) and start dealing with the exploitation part while I wait for somebody smarter in the team to figure this out for me. Surprisingly enough, in this case I managed to chose the more efficient option and indeed I was given a helping hand by the incomparable @koczkatamas. Here's how he solved this:
+Seeing this, I could have done one of two things: either figure this out, or just patch out the authentication step (as it has no side-effect at all for the rest of the program) and start dealing with the exploitation part while I wait for somebody smarter in the team to figure this out for me. Surprisingly enough, in this case I managed to choose the more efficient option and indeed I was given a helping hand by the incomparable @koczkatamas. Here's how he solved this:
 
 First we can see that the initial `hash` value does not really matter if we supply a long enough password as `hash` will shifted out and only our password characters (which are xored with the hash) will be used.So if we select a character pair (`$` and `H`) which nullify each other, eg. if password use '$', 'H' characters alternately (`$H$H$H$H$H$H$H`) then the resulting `hash` value will be 0.
 
@@ -1352,7 +1352,9 @@ Something is missing here!! When removing a directory, it should be detected whe
 
 So let's figure out how to run this sftp with ptmalloc and then let's see how this could be exploited.
 
-## Compiling sftp With Ptmalloc
+## sftp: Ptmalloc Edition
+
+### Compilation
 
 We have to do two things: put back in the original malloc/free/realloc plus make sure the init hook code executes to setup the default filesystem.
 Unfortunately due to the inlining (for free/realloc, even code elimination) of the functions, this would be hard from the binary. However, we have the source.
@@ -1395,7 +1397,7 @@ int main() {
 
 ```
 
-## UAF To Overlap: Ptmalloc Edition
+### Exploit Steps
 
 For this exploit, I use the newest libc version available on Ubuntu 18.04. This means that thread-local caching (tcache) will be active. The objects we are overlapping are different now: the UAF gives us a directory entry, so we will try to overlap a data object with it. So, what are the options for overlapping a data object and a directory entry object in a way that we can exploit?
 
@@ -1419,20 +1421,13 @@ For this, I decided to just use the typical trick to "turn off" the tcache: if w
 
 Of course, using the unsorted bin has side effects, as the forward and backward pointers will corrupt the first 16 bytes of the directory entry chunk. However, luckily these mean the parent pointer, the type, and the first four bytes of the name. And in fact these fields are basically unused for the pwd directory entry. Therefore, we get away with it.
 
-
-## Overlap To Heap Leak: Ptmalloc Edition
-
-What do we do with a partial overwrite of a directory entry? We can corrupt the LSB of the first child entry such that it points further `0x1C` ahead. Why? Because this way the field that is supposed to be at `0xC` (name) will instead be equal to the original field at `0x28` aka the data pointer field. This way, when we call an `ls`, instead of the name of the corresponding file entry of the pwd, we will get a leak of the data pointer's value!
-
-## Heap leak To Arbitrary Write: Ptmalloc Edition
+So, what do we do with a partial overwrite of a directory entry? We can corrupt the LSB of the first child entry such that it points further `0x1C` ahead. Why? Because this way the field that is supposed to be at `0xC` (name) will instead be equal to the original field at `0x28` aka the data pointer field. This way, when we call an `ls`, instead of the name of the corresponding file entry of the pwd, we will get a leak of the data pointer's value!
 
 Now, with the knowledge of the heap base address, we could create complete fake file entries, therefore gain arbitrary write again! However, we have already ruined the directory entry, since the child pointer is wrong. We could still make this work if we juggled around more with children entries a priori, but there's a simpler solution: we simply move on from this crooked pwd!
 
 If we setup another directory first, then we can simply `cd` into it. At this point, the old pwd directory will be completely lost, since the only remaining reference to it was the global pwd pointer itself. No problem for us.
 
 Once we have a new pwd, we can redo the same exact thing, except that this time we can fully replace the child pointer. I chose to replace it with the heap base with size `0xFFFF`. This basically gives fully arbitrary read/write of the entire heap.
-
-## Completing the exploit
 
 From here, it is pretty trivial to win. Here's one possibility:
 
@@ -1695,7 +1690,6 @@ get("foobar2") #this will print out 0xFFFF from the heap. We have won from here.
 
 p.interactive()
 ```
-
 
 ## Bonus: Off-By-One From Hell
 
