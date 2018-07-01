@@ -885,7 +885,7 @@ int main() {
 
 Obviously, the setup of the initial filesystem (assigning `root`, `pwd` as well as creating the flag file and `src/sftp.c`) has to happen somewhere. This part is not in the source code. In the binary, this is what the `init_filesystem()` function in the `init_array` did. Here is the reversed pseudocode, it is pretty self explanatory:
 
-```
+```c
 char *init_filesystem()
 {
   file_entry *flag_obj; // rbx
