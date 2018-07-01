@@ -92,7 +92,7 @@ __printf_chk(1, "%s@%s's password: ", username_codebeef, sftp_server_name);
   return result;
 ```
 
-Seeing this, I could have done one of two things: either figure this out, or just patch out the authentication step (as it has no side-effect at all for the rest of the program) and start dealing with the exploitation part while I wait for somebody smarter in the team to figure this out for me. Surprisingly enough, in this case I managed to chose the more efficient option and indeed I was given a helping hand by the incomparable @kockztamas. Here's how we solved this:
+Seeing this, I could have done one of two things: either figure this out, or just patch out the authentication step (as it has no side-effect at all for the rest of the program) and start dealing with the exploitation part while I wait for somebody smarter in the team to figure this out for me. Surprisingly enough, in this case I managed to chose the more efficient option and indeed I was given a helping hand by the incomparable @koczkatamas. Here's how he solved this:
 
 First we can see that the initial `hash` value does not really matter if we supply a long enough password as `hash` will shifted out and only our password characters (which are xored with the hash) will be used.So if we select a character pair (`$` and `H`) which nullify each other, eg. if password use '$', 'H' characters alternately (`$H$H$H$H$H$H$H`) then the resulting `hash` value will be 0.
 
@@ -976,7 +976,7 @@ In fact, I did check this... but after seeing that the flag file was simply a re
 
 Now that we understand the filesystem implementation and know that allocation overlaps can occur, a fairly straightforward plan emerges. 
 
-If we could overlap a `file_entry_t` type with a data object, we could detect that overlap happening bceause the inline name array of the file entry object would get clobbered, which would be visible by calling an `ls` command on the containing directory, which only uses the (inline) name member of file objects, but not their data pointer fields (meaning that the fact that the overlap has clobbered the data pointer would not be a problem).
+If we could overlap a `file_entry_t` type with a data object, we could detect that overlap happening because the inline name array of the file entry object would get clobbered, which would be visible by calling an `ls` command on the containing directory, which only uses the (inline) name member of file objects, but not their data pointer fields (meaning that the fact that the overlap has clobbered the data pointer would not be a problem).
 
 Secondly, once we know an overlap occured, we could also immediately know the exact offset from the start of the overlapping data object to the beginning of the overlap simply by counting the number of marker characters that are printed our when invoking `ls`. That is because the command prints until the first null byte, irrespective of this going beyond 20 bytes (normal length of a name).
 
@@ -986,7 +986,7 @@ Lastly, once we know exactly how a data object overlaps a file object, we can mo
 
 There is just one problem: we don't know how lucky we would need to get in order to stumble upon an overlap occuring.
 
-## You've Got To Ask Yourself One Question: Do I Feel lucky?
+## You've Got To Ask Yourself One Question: Do I Feel Lucky?
 
 So, I was also wondering, how "random" are the allocation addresses going to be? After all, we are seeding srand with time() - is the challenge trying to tell us we are supposed to be beating MORE bad crypto here? Or perhaps there will be additional vulnerabilities in the actual command implementations as well that we would need to complete an exploit, instead of having to rely on chance? Or will this really be an otherwise flawless program which is to be pwned solely due to this "sophisticated" malloc implementation?
 
@@ -1430,7 +1430,7 @@ Now, with the knowledge of the heap base address, we could create complete fake 
 
 If we setup another directory first, then we can simply `cd` into it. At this point, the old pwd directory will be completely lost, since the only remaining reference to it was the global pwd pointer itself. No problem for us.
 
-Once we have a new pwd, we can redo the same exact thing, except that this time we can fully replace the child pointer. I chose to replace it with the heap base with size `0xFFFF`. This basically gives fully arbtirary read/write of the entire heap.
+Once we have a new pwd, we can redo the same exact thing, except that this time we can fully replace the child pointer. I chose to replace it with the heap base with size `0xFFFF`. This basically gives fully arbitrary read/write of the entire heap.
 
 ## Completing the exploit
 
@@ -1440,7 +1440,7 @@ From here, it is pretty trivial to win. Here's one possibility:
  * Leaking the entire heap in one step gets us the libc address -> we can figure out where the free hook is.
  * Write back the heap content the same way, except modify a data pointer to point to the free hook as well as modify the parent pointer of a desired file object so that it reads "/bin//sh". No steps use that pointer from here, so it doesn't matter that it is garbage as a pointer value.
  * Rewrite free hook from 0 to system.
- * Call an rm to free the desired file - this results in system('/bin/sh')
+ * Call an `rm` to free the desired file - this results in `system('/bin/sh')`
 
 Here is an exploit that will achieve the arbitrary r/w and leak the entire heap. Concluding it is left as an exercise for the reader :)
 
