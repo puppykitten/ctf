@@ -989,11 +989,11 @@ There is just one problem: we don't know how lucky we would need to get in order
 
 ## You've Got To Ask Yourself One Question: Do I Feel Lucky?
 
-So, I was also wondering, how "random" are the allocation addresses going to be? After all, we are seeding srand with time() - is the challenge trying to tell us we are supposed to be beating MORE bad crypto here? Or perhaps there will be additional vulnerabilities in the actual command implementations as well that we would need to complete an exploit, instead of having to rely on chance? Or will this really be an otherwise flawless program which is to be pwned solely due to this "sophisticated" malloc implementation?
+So, I was also wondering, how "random" are the allocation addresses going to be? After all, we are seeding srand with `time()` - is the challenge trying to tell us we are supposed to be beating MORE bad crypto here? Or perhaps there will be additional vulnerabilities in the actual command implementations as well that we would need to complete an exploit, instead of having to rely on chance? Or will this really be an otherwise flawless program which is to be pwned solely due to this "sophisticated" malloc implementation?
 
 So the question was: do I keep looking for bugs to make this thing completely deterministic or do I take the "overlap by chance" primitive and run with it?
 
-And THAT... took me to the second pitfall where I wasted many more hours somewhat pointlessly.
+And THAT... took me to the second pitfall where I wasted many more hours somewhat pointlessly. In hindsight, the second option was the faster solution. Nonetheless, it IS possible to leak the rand state due to an additional vulnerability in the sftp implementation itself. While I did not use this for the CTF at all, I describe the vulnerability at the very end of this writeup.
 
 ## Pitfall #2: All I Want For My Birthday Is A Collision
 
