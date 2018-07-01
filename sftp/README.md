@@ -12,7 +12,7 @@ Besides the technical details of the solution, I will highlight the pitfalls I f
 
 The challenge itself is a (fairly) simple file transfer protocol service. It starts with an authentication step (we'll get to that in a minute) and then runs a straightforward command processing loop:
 
-```
+```c
 __int64 __fastcall main(__int64 a1, char **a2, char **a3)
 {
   int stderr_; // edi
