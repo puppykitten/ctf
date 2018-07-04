@@ -1743,7 +1743,7 @@ entry** new_entry(char* path) {
 
 Of course, with ptmalloc, we can get a heap overflow of significance. For example if we aligned a new file entry object to get the slot in front of an already existing one or a directory entry, then we could be corrupting pointers. But nevermind that, we know that from a flexible heap overflow like this, we can also get an exploit out of tcache metadata corruption itself to begin with. So that would be fairly run of the mill.
 
-Unfortunately - as far as I could see - this bug doesn't speed things up for the CTF version. That is because 1) heap overflows into other chunks aren't useful without overlaps on this sophisticated allocator of course 2) unfortunately the remaining fields of a file/directory/link entry are initialized AFTER the `strcpy` call, which means that we lose whatever we "gain" by writing into a file's size field or data pointer field or a link's target field or a directory's child array fields.
+Unfortunately - as far as I could see AT THE TIME - this bug doesn't speed things up for the CTF version. That is because 1) heap overflows into other chunks aren't useful without overlaps on this sophisticated allocator of course 2) unfortunately the remaining fields of a file/directory/link entry are initialized AFTER the `strcpy` call, which means that we lose whatever we "gain" by writing into a file's size field or data pointer field or a link's target field or a directory's child array fields.
 
 Well - not entirely. In the case of directory and file entries, the name will be followed by a field that will not contain anything unknown but will definitely include a null byte. However, in the case of link entries, the entry structure is followed by the pointer to the new entry directly!
 
@@ -1802,3 +1802,16 @@ fooooooooooooooooooo\x8c\x8e-Z
 cccccccccccccccccccc\x04
 BBBBBBBBBBBBBBBBBBBB\x03
 ```
+
+
+### Bonus 3: You Make Your Own Luck
+
+And since we can leak entry addresses, we can actually solve the entire challenge without overlaps too. Even though I realized the strcpy overflow and the entry address leak possibility using links, the last step did not occur to me to get to the end without forcing an overlap. So this is the third possible solution (apart from either predicting/leaking rand() state or leveraging the birthday paradox to actually bruteforce an overlap easily).
+
+The only misisng piece was the way directories are actually grown. As I have noted, if we `strcpy` overflow the name of a directory, we can write fake child entries, but the size will be initialized to 16 and all 16 will be wiped out to NULL anyway. So I neglected this, despite the possibility actually being there! Cheers to other solvers of this challenge for pointing this out to me; I've extended the writeup with this to make it more complete.
+
+To see this, we have to look at how directories are grown, in the function `new_entry()`. As long as there is a child of a directory's array that is NULL, a new entry is always placed there. But, if it is all filled, then the code calls `realloc()` to double the size, doubles the `child_count` field, copies over the child entries to the reallocated location and then finally puts the new entry pointer to the first new slot. First, `realloc()` is a NOP so we can just ignore all that. But, more importantly, this means that if we overwrite the 18th child (i.e. slot 17, counting from 0) when doing the name overflow on a new directory and then add 17 children in total, then we will end up with a directory that has a child could of 32, plus 17 valid children entry pointers, plus the fake child entry pointer we overflown there in the beginning!
+
+Since we can leak an entry address via links, we can then point the fake child pointer 12 bytes after that entry's data pointer to get its data pointer leaked too. From there, since we know the exact address of a fully controlled data chunk, we can setup a fake entry chunk in there just as before and then point a new directory's child entry to it with the same overflow trick as before.
+
+So that's the end of the story: the `strcpy` overflow itself was enough to win on its own, the `malloc` rand implementation was enough to win on its own or it could be made simpler by guessing rand states (risky) or by recomputing rand states using the leak (but that needs both bugs). Or, if you switch the challenge to ptmalloc, then the use-after-free is also enough to win.
