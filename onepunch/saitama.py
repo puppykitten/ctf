@@ -42,6 +42,9 @@ So hold on, let's get back to the challenge solving.
 We can't do fastbin poisoning, largebin poisoning, or tcache poisoning, how are we supposed to win exactly?
 
 Cool, now we have an actual challenge! Let's solve it.
+
+Read through all the comments all the way to the end to follow the construction of the exploit. There's
+also a discussion at the end about alternative solutions.
 '''
 
 
@@ -370,3 +373,36 @@ chain = flat([
 
 debut(0, chain.ljust(0x200))
 p.interactive()
+
+'''
+And finally, we get the flag written out to us:
+hitcon{y0u_f0rg0t_h0u23_0f_10r3_0r_4fra1d_1ar93_b1n_4tt4ck}
+
+.... okay. Well, given the flag of LazyHouse, we highly suspect
+that the challenge creators _thought_ that we will solve LazyHouse
+with this attack, and we will not realize tcache reenablement here
+and use a different vector. Namely, that we do a largebin attack
+to hit global_max_fast for fastbin poisoning reenablement (we are guessing).
+
+So as a collorary, it is worth mentioning that yes, even though we can't
+do largebin sized allocations, it is not actually true we couldn't do
+largebin attack here - as I realized as soon as we got the flag and it got
+me thinking. Since, that only needs a smartly corrupted largebin-sized chunk to be on the heap's
+unsorted bin when an allocation request happens; if that request will be to a
+different size, this chunk can then go into a largebin, then this corrupt chunk
+will trigger the known largebin attack.
+
+And, I guess the trick is, we can free a non-largebin unto unsorted and then using
+chunk overlapping that I didn't describe here but is very much possible and we
+did achieve actually (alloc obj0 0x400, free back to unsorted to top, then alloc
+obj1/obj2 smaller sizes, to overlap with the stale obj0 pointer), we can actually manipulate
+a fake largebin-sized chunk into triggering the attack.
+
+Maybe that's what the author had in mind. To be honest, I'm not sure what he
+was driving at with house of lore. Yes that's possible for smallbins, but it needs
+a target where the +8 (bk) is properly controlled; one could think of the bins themselves
+but the size field wouldn't be correct there which I think gets in the way. Although I'm
+not sure. Anyway, I'm sure there's some team somewhere that somehow went the 
+"y0u_f0rg0t_h0u23_0f_10r3" route, whatever it means, so go out there on the Internet and find it! :)
+'''
+
