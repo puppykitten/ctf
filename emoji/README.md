@@ -229,4 +229,10 @@ the `obj->buf` field that it writes TO, we can trivially get read-write-anywhere
 address and in libc we can overwrite the `free_hook` which we can trigger with a controlled `rdi` via the emoji free instruction in
 order to get a shell.
 
+And the well deserved flag:
+
+`hitcon{H0p3_y0u_Enj0y_pWn1ng_th1S_3m0j1_vM_^_^b}`
+
+Indeed, I actually very much enjoyed this. Thank you!
+
 See the exploit code for details! 
