@@ -381,28 +381,73 @@ hitcon{y0u_f0rg0t_h0u23_0f_10r3_0r_4fra1d_1ar93_b1n_4tt4ck}
 .... okay. Well, given the flag of LazyHouse, we highly suspect
 that the challenge creators _thought_ that we will solve LazyHouse
 with this attack, and we will not realize tcache reenablement here
-and use a different vector. Namely, that we do a largebin attack
+and use a different vector.
+
+One guess would be that we were supposed to do a largebin attack
 to hit global_max_fast for fastbin poisoning reenablement (we are guessing).
+We used that successfully for LazyHouse, and it works here too.
 
 So as a collorary, it is worth mentioning that yes, even though we can't
 do largebin sized allocations, it is not actually true we couldn't do
 largebin attack here - as I realized as soon as we got the flag and it got
-me thinking. Since, that only needs a smartly corrupted largebin-sized chunk to be on the heap's
-unsorted bin when an allocation request happens; if that request will be to a
-different size, this chunk can then go into a largebin, then this corrupt chunk
-will trigger the known largebin attack.
+me thinking. Since, that only needs a smartly corrupted largebin-sized chunk
+to be on the heap's unsorted bin when an allocation request happens; if that
+request will be to a different size, this chunk can then go into a largebin,
+then this corrupt chunk will trigger the known largebin attack.
 
 And, I guess the trick is, we can free a non-largebin unto unsorted and then using
 chunk overlapping that I didn't describe here but is very much possible and we
 did achieve actually (alloc obj0 0x400, free back to unsorted to top, then alloc
-obj1/obj2 smaller sizes, to overlap with the stale obj0 pointer), we can actually manipulate
-a fake largebin-sized chunk into triggering the attack.
+obj1/obj2 smaller sizes, to overlap with the stale obj0 pointer), we can actually
+manipulate a fake largebin-sized chunks into triggering the attack.
 
-Maybe that's what the author had in mind. To be honest, I'm not sure what he
-was driving at with house of lore. Yes that's possible for smallbins, but it needs
-a target where the +8 (bk) is properly controlled; one could think of the bins themselves
-but the size field wouldn't be correct there which I think gets in the way. Although I'm
-not sure. Anyway, I'm sure there's some team somewhere that somehow went the 
-"y0u_f0rg0t_h0u23_0f_10r3" route, whatever it means, so go out there on the Internet and find it! :)
+Maybe that's what the author had in mind. On the other hand, at first I didn't know
+what they were driving at by mentioning house of lore. But finally I realized it, so
+I'll amend this write-up with this.
+
+So, "House of Lore" is smallbin poisoning basically. Same concept as for fastbin, but
+the difference is that the safe unlinking check that was introduced severly limits targets
+for it. In fact I used to think that it has no real applicability for ptmalloc with tcache
+anymore, but as it turns out in exactly this kind of contrived "onepunch malloc" situation,
+it does. So here is the description for it:
+
+The general idea is that we corrupt the bck pointer of the smallbin chunk at the head of the
+bin, so 2 allocations return a selected memory address (the fake bck) on the second attempt.
+So just like fastbin/tcache poisoning. However, we can't choose _any_ address because of the
+safe unlink check. Rather, we need a 'bck' where 'bck->fd == victim'. So an address where
+we can control a pointer's value, but somehow is still an interesting target for us. As it
+turns out, there are plenty like that due to all the bins. We could leverage the arena's
+fastbins or regular bins for this. This actually works fine with malloc. But here is the problem:
+with calloc, after libc_malloc returns, the returned chunk's size field is used to do the memset
+to 0 and of course the size there includes +0x10 for the headers, so actually it is memset to
+`chunk2mem(chunk)->size-0x10`. Unfortunately, with the arena based targets, that field can only
+be 0 or a heap pointer, so that is always a sigsegv.
+
+This is where I was so I considered this sort of useless, since with mallocs, tcache poisoning will
+always be a much better target. However - IF we have the 1 malloc restriction (and don't overcome
+it the "easy" way), well we can go after the tcache thread struct on the heap itself! This also
+has an array of controllable heap pointers in the `entries` array, so it's a good target for smallbin
+poisoning. The trick is getting a valid size field in there. I think there are two ways to do this:
+
+1) manipulate overlapped-chunk sizes in order to free a chunk into the second largest tcache bin +
+free chunks into the first and second smallest tcache bins. Then target the first `tcache->entries[]`
+slot for smallbin poisoning. This will result in using 0x100 as size, so we manage to allocate over
+the entries array. Since it is 64*8=512 bytes long, with a 0x400 size restriction here it would have
+been easily achievable to directly then corrupt the entries member for the 0x220 slot and then win.
+
+2) the harder way is to use one more trick instead of tcache "feng shui". As it turns out, still the
+`unlink()` step in forward and backward consolidation of chunks in a free call only checks safe unlinking,
+no other validity checks on the pointed chunks of `fd` and `bk`. That means that we could use an
+overlapped chunk to create a fake forward coallesced chunk with fake `fd` and `bk` both pointing at
+`&tcache->entries[X]`. Consequently, one of the entries members will be adjusted to become the other one.
+That in turn again gives a direct allocation over a portion of `tcache->entries[]` with the malloc. From there,
+one can again directly write a fake valid size field, and then free again to get back to the count 7 and then
+redo the whole "house of lore" to once again allocate over the region, this time corrupting the entries
+member for 0x220 instead of it size and then with the tcache-based malloc.
+
+  
+So that's our guess of what the challenge solution was supposed to be like... in our mind, this is too
+complicated though.
+
 '''
 
